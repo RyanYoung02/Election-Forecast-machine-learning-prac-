@@ -19,6 +19,298 @@ rm(list = ls()) # Clean your environment:
 gc() # garbage collection - It can be useful to call gc after a large object has been removed, as this may prompt R to return memory to the operating system.
 library(tidyverse)
 list.files('code/', full.names = T, recursive = T) %>% .[grepl('.R', .)] %>% as.list() %>% walk(~source(.))
+library(caTools)
+library(caret)
+library(glm2)
+
 ```
 
+Looking at the 2016 Presidential Election
+```{r}
+#read in data
+polls<-read.csv("/Users/ryanyoung/Desktop/Data Science/Machine Learning Project/Presidential Polls /pres_pollaverages_1968-2016.csv")
+```
+
+
+```{r}
+#only look at national polls
+polls <- polls[grepl("National", polls$state), ]
+```
+
+```{r}
+#only look at Donald Trump and Hillary Clinton
+polls <- polls[grepl("Donald Trump|Hillary Rodham Clinton", polls$candidate_name), ]
+
+```
+
+```{r}
+# formating as date 
+polls$modeldate <- as.Date(polls$modeldate, format = "%m/%d/%Y")
+
+```
+
+```{r}
+
+#creating columns for Trump's poll rating and Clinton's poll rating 
+polls_reformatted <- polls%>% mutate(Trump_poll = ifelse(candidate_name == "Donald Trump", pct_estimate, NA),
+         Clinton_poll = ifelse(candidate_name == "Hillary Rodham Clinton", pct_estimate, NA))
+
+#dropping unnecessary variables 
+polls_reformatted <- polls_reformatted %>% select(state,Trump_poll, Clinton_poll, modeldate,pct_estimate)
+library(dplyr)
+
+#merging the date columns so that there is just one row per individual poll
+
+polls_reformatted<- polls_reformatted %>%
+  group_by(modeldate) %>%
+  summarize(state = first(state),
+            pct_estimate = first(pct_estimate),
+            Trump_poll = max(Trump_poll, na.rm = TRUE),
+            Clinton_poll = max(Clinton_poll, na.rm = TRUE))%>%ungroup() %>%
+  select(-pct_estimate)
+
+
+
+#create column for winning candidate
+polls_reformatted <- polls_reformatted %>%
+  mutate(winning_candidate = ifelse(Trump_poll > Clinton_poll, "Trump", 
+                                    ifelse(Clinton_poll > Trump_poll, "Clinton", "Tie")))
+
+
+#create binary variable called Clinton win 
+polls_reformatted$ClintonWin <- ifelse(polls_reformatted$winning_candidate == 'Clinton', 1, 0)
+
+
+```
+
+ #Linear Regression Model
+```{r}
+#split data into training and testing set 
+
+set.seed(123)
+split <- sample.split(polls_reformatted$ClintonWin, SplitRatio = 0.7)
+training_set <- subset(polls_reformatted, split == TRUE)
+test_set <- subset(polls_reformatted, split == FALSE)
+```
+
+```{r}
+# Train the model
+model <- lm(ClintonWin ~ Trump_poll + Clinton_poll, data = training_set)
+summary(model)
+```
+
+```{r}
+# Predict outcomes
+predictions <- predict(model, newdata = test_set)
+
+```
+
+```{r}
+# Convert predictions to binary outcomes (threshold = 0.5)
+predicted_outcome <- ifelse(predictions > 0.5, 1, 0)
+print(predicted_outcome)
+```
+
+```{r}
+# Calculate Accuracy
+accuracy <- sum(predicted_outcome == test_set$ClintonWin) / nrow(test_set)
+print(paste('Accuracy:', accuracy))
+```
+
+```{r}
+
+
+# Create a confusion matrix
+cm <- confusionMatrix(as.factor(predicted_outcome), as.factor(test_set$ClintonWin))
+
+# The confusion matrix has entries for accuracy, precision (Positive Predictive Value), recall (Sensitivity)
+# and F1 score (F1)
+print(cm)
+
+```
+
+Logistic Regression Model 
+```{r}
+
+
+# Train the model
+logistic_model <- glm(ClintonWin ~ Trump_poll + Clinton_poll, data = training_set, family = binomial())
+
+# Print the summary
+summary(logistic_model)
+
+# Predict outcomes
+predictions_logistic <- predict(logistic_model, newdata = test_set, type = "response")
+
+# Convert to binary outcomes
+predicted_outcome_logistic <- ifelse(predictions_logistic > 0.5, 1, 0)
+
+# Calculate Accuracy
+accuracy_logistic <- sum(predicted_outcome_logistic == test_set$ClintonWin) / nrow(test_set)
+print(paste('Accuracy:', accuracy_logistic))
+
+# Create a confusion matrix
+cm_logistic <- confusionMatrix(as.factor(predicted_outcome_logistic), as.factor(test_set$ClintonWin))
+
+# Print the confusion matrix
+print(cm_logistic)
+
+```
+
+Looking at the 2024 Presidential Election 
+
+```{r}
+#read in data
+polls_2024<-read.csv("/Users/ryanyoung/Desktop/Data Science/Machine Learning Project/Presidential Polls /president_polls_2024_cycle.csv")
+
+```
+
+```{r}
+#cleaning the data
+#only look at polling compare Trump and Biden, first two rows of each poll
+polls_2024<- polls_2024%>%
+    group_by(poll_id) %>%
+    slice(1:2) %>%
+    filter(all(c("Joe Biden", "Donald Trump") %in% candidate_name)) %>%
+    ungroup()
+
+
+#remove state level polls
+polls_2024 <-polls_2024%>%
+    filter(state == "")
+
+#convert end_date into a date column
+polls_2024$end_date <- as.Date(polls_2024$end_date, format = "%m/%d/%Y")
+
+#convert pct in a numeric column 
+polls_2024$pct <- as.numeric(polls_2024$pct)
+```
+
+
+```{r}
+#creating columns for Trump's poll rating and Bidens poll rating 
+polls_2024<- polls_2024%>% mutate(Trump_poll = ifelse(candidate_name == "Donald Trump", pct, NA),
+         Biden_poll = ifelse(candidate_name == "Joe Biden", pct, NA))
+
+#dropping unnecessary variables 
+polls_2024 <- polls_2024%>% select(state, candidate_name, pollster,Trump_poll, Biden_poll, end_date,pct)
+```
+
+```{r}
+#merging the date columns so that there is just one row per individual poll
+
+polls_2024<- polls_2024 %>%
+  group_by(end_date) %>%
+  summarize(state = first(state),
+            pct = first(pct),
+            Trump_poll = max(Trump_poll, na.rm = TRUE),
+            Biden_poll = max(Biden_poll, na.rm = TRUE))%>%ungroup() %>%
+  select(-pct)
+```
+
+```{r}
+#create column for winning candidate
+polls_2024<- polls_2024 %>%
+  mutate(winning_candidate = ifelse(Trump_poll > Biden_poll, "Trump", 
+                                    ifelse(Biden_poll > Trump_poll, "Biden", "Tie")))
+
+
+#create binary variable called Biden win 
+polls_2024$BidenWin <- ifelse(polls_2024$winning_candidate == 'Biden', 1, 0)
+
+```
+
+Linear Regression Model 
+
+```{r}
+#split data into training and testing set 
+
+set.seed(123)
+split <- sample.split(polls_2024$BidenWin, SplitRatio = 0.7)
+training_set_2024 <- subset(polls_2024, split == TRUE)
+test_set_2024 <- subset(polls_2024, split == FALSE)
+```
+
+```{r}
+# Train the model
+model_2024 <- lm(BidenWin ~ Trump_poll + Biden_poll, data = training_set_2024)
+summary(model_2024)
+```
+
+```{r}
+# Predict outcomes
+predictions_2024 <- predict(model_2024, newdata = test_set_2024)
+
+```
+
+```{r}
+# Convert predictions to binary outcomes (threshold = 0.5)
+predicted_outcome_2024 <- ifelse(predictions_2024 > 0.5, 1, 0)
+print(predicted_outcome_2024)
+```
+
+```{r}
+# Calculate Accuracy
+accuracy_2024 <- sum(predicted_outcome_2024 == test_set_2024$BidenWin) / nrow(test_set_2024)
+print(paste('Accuracy:', accuracy_2024))
+```
+
+```{r}
+# Create a confusion matrix
+cm_2024 <- confusionMatrix(as.factor(predicted_outcome_2024), as.factor(test_set_2024$BidenWin))
+
+# The confusion matrix has entries for accuracy, precision (Positive Predictive Value), recall (Sensitivity)
+# and F1 score (F1)
+print(cm_2024)
+```
+
+#Logistic Regression Model
+
+```{r}
+
+# Train the model
+logistic_model_2024 <- glm(BidenWin ~ Trump_poll + Biden_poll, data = training_set_2024, family = binomial())
+
+# Print the summary
+summary(logistic_model_2024)
+
+# Predict outcomes
+predictions_logistic_2024 <- predict(logistic_model_2024, newdata = test_set_2024, type = "response")
+
+# Convert to binary outcomes
+predicted_outcome_logistic_2024 <- ifelse(predictions_logistic_2024 > 0.5, 1, 0)
+
+# Calculate Accuracy
+accuracy_logistic_2024 <- sum(predicted_outcome_logistic_2024 == test_set_2024$BidenWin) / nrow(test_set_2024)
+print(paste('Accuracy:', accuracy_logistic_2024))
+
+# Create a confusion matrix
+cm_logistic_2024 <- confusionMatrix(as.factor(predicted_outcome_logistic_2024), as.factor(test_set_2024$BidenWin))
+
+# Print the confusion matrix
+print(cm_logistic_2024)
+
+```
+
+Linear Model predicting the percentage of the vote scored 
+```{r}
+# Create a linear regression model to predict Biden's vote percentage
+linear_model_biden <- lm(Biden_poll ~ Trump_poll, data = training_set_2024)
+
+# Print summary
+summary(linear_model_biden)
+
+# Use the model to predict Biden's vote percentage in the test set
+predicted_percentage_biden <- predict(linear_model_biden, newdata = test_set_2024)
+
+# Calculate mean squared error or some other suitable metric
+mse_biden <- mean((predicted_percentage_biden - test_set_2024$Biden_poll)^2)
+
+# Repeat the process for Trump
+linear_model_trump <- lm(Trump_poll ~ Biden_poll, data = training_set_2024)
+summary(linear_model_trump)
+predicted_percentage_trump <- predict(linear_model_trump, newdata = test_set_2024)
+mse_trump <- mean((predicted_percentage_trump - test_set_2024$Trump_poll)^2)
+
+```
 
