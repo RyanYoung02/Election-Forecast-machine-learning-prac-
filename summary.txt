@@ -1,0 +1,20 @@
+
+Call:
+lm(formula = BidenWin ~ Trump_poll + Biden_poll, data = training_set_2024)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-0.70794 -0.24144  0.04192  0.29558  0.77868 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)    
+(Intercept)  0.513482   0.313201   1.639    0.103    
+Trump_poll  -0.092134   0.007235 -12.735   <2e-16 ***
+Biden_poll   0.092071   0.007110  12.950   <2e-16 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.3218 on 152 degrees of freedom
+Multiple R-squared:  0.5937,	Adjusted R-squared:  0.5884 
+F-statistic: 111.1 on 2 and 152 DF,  p-value: < 2.2e-16
+
