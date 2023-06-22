@@ -6,26 +6,26 @@ output:
 
 # Purpose
 
-Purpose of this work folder.
 
-Ideally store a minimum working example data set in data folder.
-
-Add binary files in bin, and closed R functions in code. Human Readable settings files (e.g. csv) should be placed in settings/
 
 
 ```{r}
 
 rm(list = ls()) # Clean your environment:
-gc() # garbage collection - It can be useful to call gc after a large object has been removed, as this may prompt R to return memory to the operating system.
+
 library(tidyverse)
-list.files('code/', full.names = T, recursive = T) %>% .[grepl('.R', .)] %>% as.list() %>% walk(~source(.))
 library(caTools)
 library(caret)
 library(glm2)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(pROC)
+library(stargazer)
 
 ```
 
-Looking at the 2016 Presidential Election
+Looking at the 2016 Presidential Election (testiing)
 ```{r}
 #read in data
 polls<-read.csv("/Users/ryanyoung/Desktop/Data Science/Machine Learning Project/Presidential Polls /pres_pollaverages_1968-2016.csv")
@@ -83,7 +83,7 @@ polls_reformatted$ClintonWin <- ifelse(polls_reformatted$winning_candidate == 'C
 
 ```
 
- #Linear Regression Model
+#Linear Regression Model
 ```{r}
 #split data into training and testing set 
 
@@ -264,7 +264,7 @@ cm_2024 <- confusionMatrix(as.factor(predicted_outcome_2024), as.factor(test_set
 print(cm_2024)
 ```
 
-#Logistic Regression Model
+Logistic Regression Model
 
 ```{r}
 
@@ -305,12 +305,171 @@ predicted_percentage_biden <- predict(linear_model_biden, newdata = test_set_202
 
 # Calculate mean squared error or some other suitable metric
 mse_biden <- mean((predicted_percentage_biden - test_set_2024$Biden_poll)^2)
+print(mse_biden)
 
 # Repeat the process for Trump
 linear_model_trump <- lm(Trump_poll ~ Biden_poll, data = training_set_2024)
 summary(linear_model_trump)
 predicted_percentage_trump <- predict(linear_model_trump, newdata = test_set_2024)
 mse_trump <- mean((predicted_percentage_trump - test_set_2024$Trump_poll)^2)
+print(mse_trump)
+
+# Predict on the test set for Biden
+predicted_percentage_biden <- predict(linear_model_biden, newdata = test_set_2024)
+
+# Create a data frame with actual and predicted values
+results_biden <- data.frame(Actual = test_set_2024$Biden_poll, Predicted = predicted_percentage_biden)
+
+# Create scatter plot of actual vs. predicted values for Biden
+ggplot(results_biden, aes(x = Actual, y = Predicted)) +
+    geom_point() +
+    geom_point(color = 'blue')+
+    geom_abline(intercept = 0, slope = 1, color = 'red') +
+    ggtitle('Actual vs Predicted for Biden') +
+    xlab('Actual Vote Percentage') +
+    ylab('Predicted Vote Percentage')
+
+# Do the same for Trump
+predicted_percentage_trump <- predict(linear_model_trump, newdata = test_set_2024)
+results_trump <- data.frame(Actual = test_set_2024$Trump_poll, Predicted = predicted_percentage_trump)
+ggplot(results_trump, aes(x = Actual, y = Predicted)) +
+    geom_point(color='red') +
+    geom_abline(intercept = 0, slope = 1, color = 'blue') +
+    ggtitle('Actual vs Predicted for Trump') +
+    xlab('Actual Vote Percentage') +
+    ylab('Predicted Vote Percentage')
+```
+
+#Decision tree model
+```{r}
+# Define the formula for the model
+formula <- BidenWin ~ Trump_poll + Biden_poll
+
+# Fit the decision tree model
+decision_tree_model <- rpart(formula, data = training_set_2024, method = "class")
+
+# Print the decision tree model
+print(decision_tree_model)
+
+# Plot the decision tree
+rpart.plot(decision_tree_model)
+
+# Make predictions
+predicted_outcome_dt <- predict(decision_tree_model, newdata = test_set_2024, type = "class")
+
+#Print the confusion matrix
+cm_dt<- confusionMatrix(as.factor(predicted_outcome_dt), as.factor(test_set_2024$BidenWin))
+print(cm_dt)
+
+
+
+
+```
+
+#Random forest model 
+```{r}
+# Fit the random forest model
+suppressWarnings({random_forest_model <- randomForest(formula, data = training_set_2024, ntree = 100)})
+
+# Print the random forest model
+print(random_forest_model)
+
+test_set_2024$BidenWin <- as.factor(test_set_2024$BidenWin)
+
+# Make predictions
+predicted_outcome_rf <- predict(random_forest_model, newdata = test_set_2024, type = "response")
+
+predicted_outcome_rf <- as.factor(ifelse(predicted_outcome_rf > 0.5, 1, 0))
+
+cm_rf <- confusionMatrix(predicted_outcome_rf, test_set_2024$BidenWin)
+print(cm_rf)
+```
+
+Adding in economic data 
+```{r}
+#average poll rating by month 
+polls_2024_monthly <- polls_2024 %>%
+    group_by(month = format(end_date, "%Y-%m")) %>%
+    summarise(
+        Trump_average = mean(Trump_poll, na.rm = TRUE),
+        Biden_average = mean(Biden_poll, na.rm = TRUE)
+    )
+
+#drop last observation 
+polls_2024_monthly <- head(polls_2024_monthly, -1)
+
+#read in unemployment 
+unemployment<-read.csv("/Users/ryanyoung/Desktop/Data Science/Machine Learning Project/UNRATE-5.csv")
+unemployment$DATE <- as.Date(unemployment$DATE)
+unemployment<-unemployment%>%
+    group_by(month=format(DATE, "%Y-%m"))
+
+#read in CPI
+inflation<-read.csv("/Users/ryanyoung/Desktop/Data Science/Machine Learning Project/CORESTICKM159SFRBATL.csv")
+
+#rename column 
+colnames(inflation)[colnames(inflation) == "CORESTICKM159SFRBATL"] <- "Inflation"
+
+#format dates
+inflation$DATE <- as.Date(inflation$DATE)
+inflation<-inflation%>%
+    group_by(month=format(DATE, "%Y-%m"))
+
+# Replace '00' with '20' at the start of the dates in the 'month' column of polls_2024_monthly
+polls_2024_monthly$month <- sub("^00", "20", polls_2024_monthly$month)
+
+#combine data
+
+combined_data <- merge(polls_2024_monthly, inflation, by = "month")
+combined_data<-merge(combined_data, inflation, by ="month")
+
+# Drop the 'DATE' column from the 'combined_data' dataset
+combined_data <- dplyr::select(combined_data, -DATE.y)
+combined_data <- dplyr::select(combined_data, -Inflation.y)
+
+#convert month column to date
+combined_data$month<-as.Date(paste(combined_data$month, "01", sep="-"), "%Y-%m-%d")
+
+
+#create winning column data
+combined_data<- combined_data %>%
+    mutate(winning_candidate = ifelse(Trump_average > Biden_average, "Trump", 
+                                      ifelse(Biden_average > Trump_average, "Biden", "Tie")))
+
+#create binary variable called Biden win 
+combined_data$BidenWin <- ifelse(combined_data$winning_candidate == 'Biden', 1, 0)
+
+
+```
+
+#run linear regression for the combinded data 
+```{r}
+set.seed(123)
+split <- sample.split(combined_data$BidenWin, SplitRatio = 0.7)
+training_set_c <- subset(combined_data, split == TRUE)
+test_set_c <- subset(combined_data, split == FALSE)
+
+# Train the model
+model_c <- lm(BidenWin ~ Trump_average + Biden_average + Inflation.x, data = training_set_c)
+summary(model_c)
+
+# Predict outcomes
+predictions_c<- predict(model_c, newdata = test_set_c)
+
+# Convert predictions to binary outcomes (threshold = 0.5)
+predicted_outcome_c <- ifelse(predictions_c> 0.5, 1, 0)
+print(predicted_outcome_c)
+
+#Create a confusion matrix
+cm_c <- confusionMatrix(as.factor(predicted_outcome_c), as.factor(test_set_c$BidenWin))
+
+# The confusion matrix has entries for accuracy, precision (Positive Predictive Value), recall (Sensitivity)
+# and F1 score (F1)
+print(cm_c)
+
+# Calculate Accuracy
+accuracy_c <- sum(predicted_outcome_c == test_set_c$BidenWin) / nrow(test_set_c)
+print(paste('Accuracy:', accuracy_c))
 
 ```
 

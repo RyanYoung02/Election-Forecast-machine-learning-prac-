@@ -10,6 +10,7 @@ results_biden <- data.frame(Actual = test_set_2024$Biden_poll, Predicted = predi
 # Create scatter plot of actual vs. predicted values for Biden
 ggplot(results_biden, aes(x = Actual, y = Predicted)) +
     geom_point() +
+    geom_point(color = 'blue')+
     geom_abline(intercept = 0, slope = 1, color = 'red') +
     ggtitle('Actual vs Predicted for Biden') +
     xlab('Actual Vote Percentage') +
@@ -19,8 +20,8 @@ ggplot(results_biden, aes(x = Actual, y = Predicted)) +
 predicted_percentage_trump <- predict(linear_model_trump, newdata = test_set_2024)
 results_trump <- data.frame(Actual = test_set_2024$Trump_poll, Predicted = predicted_percentage_trump)
 ggplot(results_trump, aes(x = Actual, y = Predicted)) +
-    geom_point() +
-    geom_abline(intercept = 0, slope = 1, color = 'red') +
+    geom_point(color='red') +
+    geom_abline(intercept = 0, slope = 1, color = 'blue') +
     ggtitle('Actual vs Predicted for Trump') +
     xlab('Actual Vote Percentage') +
     ylab('Predicted Vote Percentage')
